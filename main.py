@@ -52,15 +52,14 @@ def handle_signal(signalnum, stack_frame):
 signal.signal(signal.SIGTERM, handle_signal)
 
 # Load the model
-model = YOLO('models/best_Reefscape_2025_model.pt')
+model = YOLO('TODO_CREATE_MODEL.pt')
 
 # exit gracefully on ^C
 is_interrupted: bool = False
-print("Hello World")
+print("Program started")
 
 def run_cam_in_thread(cameraname: int, q: Queue) -> None:
     video: cv2.VideoCapture = cv2.VideoCapture(cameraname)  # Read the video file
-    #video.set(cv2.CAP_PROP_BUFFERSIZE, 0) # doesn't work :(
 
     while True:
         ret: bool
@@ -130,7 +129,6 @@ def run_tracker_in_thread(cameraname: int, stream: Stream) -> None:
 
         # Track objects in frames if available
         results: list[Results] = model.track(frame, persist=True, verbose=is_interactive)
-        #time.sleep(0.2)
         res_plotted: np.ndarray = results[0].plot()
         # Calculate offsets
         telemetry.add_results(results, start_time)

@@ -83,7 +83,7 @@ def split_and_copy():
         for image_filename in files:
             # Construct the corresponding label filename (e.g., 'img.jpg' -> 'img.txt')
             base_name = os.path.splitext(image_filename)[0]
-            label_filename = base_name + '.txt'
+            label_filename = base_name + '.xml'
             
             original_image_path = os.path.join(DATASET_DIR, image_filename)
             original_label_path = os.path.join(DATASET_DIR, label_filename)
@@ -98,8 +98,8 @@ def split_and_copy():
                 shutil.copy2(original_image_path, dest_image_path)
                 # Copy Label
                 shutil.copy2(original_label_path, dest_label_path)
-            else:
-                print(f"Warning: Label file for {image_filename} not found. Skipping.")
+            # else:
+            #     print(f"Warning: Label file for {image_filename} not found. Skipping.")
 
 
 if __name__ == "__main__":

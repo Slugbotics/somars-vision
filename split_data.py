@@ -46,9 +46,13 @@ def split_and_copy():
     """Load, split, and copy files."""
     
     # 1. Get all image files (assuming common image extensions)
+    imgCount = 0
+    for fileN in os.listdir(DATASET_DIR):
+        if fileN.lower().endswith('.jpg'):
+            print(f"Found image file: {fileN}")
+            imgCount+=1
     image_files = [
-        f for f in os.listdir(DATASET_DIR) 
-        if f.lower().endswith('.jpg')
+        f for f in os.listdir(DATASET_DIR) if f.lower().endswith('.jpg')
     ]
     random.shuffle(image_files)
     
@@ -60,7 +64,7 @@ def split_and_copy():
     val_count = int(total_images * VAL_RATIO)
     
     # Ensure all remaining files go to test to handle float rounding
-    test_count = total_images - train_count - val_count
+    # test_count = total_images - train_count - val_count
 
     # Define the file subsets, using python list splitting
     current_idx = 0
@@ -74,7 +78,7 @@ def split_and_copy():
     for split_name, files in subsets.items():
         if not files:
             continue
-        print(f"Processing {split_name} ({len(files)} files)...")
+        # print(f"Processing {split_name} ({len(files)} files)...")
         
         for image_filename in files:
             # Construct the corresponding label filename (e.g., 'img.jpg' -> 'img.txt')

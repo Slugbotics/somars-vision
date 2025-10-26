@@ -18,6 +18,15 @@ from mjpeg_streamer import MjpegServer, Stream
 from queue import Empty, Queue, Full
 import util
 
+# Model path
+MODEL_PATH = "models/person_model.pt"
+
+# Define the video files for the trackers
+# Path to video files, 0 for webcam, 1 for external camera
+# TODO: This should only be the cameras we need, not every possibility
+cameras: list[int] = [i for i in range(5)]
+
+
 # ANSI colors
 COLOR_BOLD = "\033[1m"
 COLOR_RESET = "\033[0m"
@@ -38,12 +47,6 @@ def get_ips() -> list[str]:
     ip_list.append("localhost")
     return ip_list
 
-# Define the video files for the trackers
-# Path to video files, 0 for webcam, 1 for external camera
-# On a robot, these should be in the same order as the cameras in VisionConstants.java
-# TODO: This should only be the cameras we need, not every possibility
-cameras: list[int] = [i for i in range(5)]
-
 def handle_signal(signalnum, stack_frame):
     # parameters are provided by the signal module but intentionally unused
     raise SystemExit()
@@ -52,7 +55,7 @@ def handle_signal(signalnum, stack_frame):
 signal.signal(signal.SIGTERM, handle_signal)
 
 # Load the model
-model = YOLO('TODO_CREATE_MODEL.pt')
+model = YOLO(MODEL_PATH)
 
 # exit gracefully on ^C
 is_interrupted: bool = False

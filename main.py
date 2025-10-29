@@ -19,7 +19,7 @@ from queue import Empty, Queue, Full
 import util
 
 # Model path
-MODEL_PATH = "models/person_model.pt"
+MODEL_PATH = "models/mannequinmodel.pt"
 
 # Define the video files for the trackers
 # Path to video files, 0 for webcam, 1 for external camera
@@ -36,6 +36,10 @@ is_interactive: bool = sys.stderr.isatty()
 
 # disable when not needed to improve performance
 enable_mjpeg: bool = is_interactive
+# We support on-screen windows on all OSes by doing GUI work on the main thread.
+enable_display: bool = True  # show OpenCV windows while detecting
+
+is_interrupted: bool = False
 
 @functools.cache # only run once
 def get_ips() -> list[str]:
@@ -95,7 +99,7 @@ def run_cam_in_thread(cameraname: int, q: Queue) -> None:
         
 
 
-def run_tracker_in_thread(cameraname: int, stream: Stream) -> None:
+def run_tracker_in_thread(cameraname: int, stream: Stream, out_q: Queue) -> None:
     """
     Runs a video file or webcam stream concurrently with the YOLOv8 model using threading.
 
@@ -114,6 +118,8 @@ def run_tracker_in_thread(cameraname: int, stream: Stream) -> None:
     cam_thread.start()
 
     snapshot_time: float = time.time()
+    
+    global is_interrupted
 
     print(f"Camera {cameraname} activating")
 
@@ -145,16 +151,29 @@ def run_tracker_in_thread(cameraname: int, stream: Stream) -> None:
             snapshotter.submit(results[0])
             snapshot_time = time.time()
 
-        if (enable_mjpeg):
-            elapsed = end_time - start_time
-            fps: float = round(1/elapsed, 2) if elapsed > 1e-6 else 0.0
-            center: tuple[int, int] = (640, 360)
-            size: int = 50
-            cv2.line(res_plotted, (center[0] - size, center[1]), (center[0] + size, center[1]), (0, 128, 255), 5)
-            cv2.line(res_plotted, (center[0], center[1] - size), (center[0], center[1] + size), (0, 128, 255), 5)
-            cv2.putText(res_plotted, str(fps), (7, 70), cv2.FONT_HERSHEY_SIMPLEX , 3, (100, 255, 0), 3, cv2.LINE_AA) 
+        # Overlay HUD and stream via MJPEG
+        elapsed = end_time - start_time
+        fps: float = round(1 / elapsed, 2) if elapsed > 1e-6 else 0.0
+        center: tuple[int, int] = (res_plotted.shape[1] // 2, res_plotted.shape[0] // 2)
+        size: int = 50
+        cv2.line(res_plotted, (center[0] - size, center[1]), (center[0] + size, center[1]), (0, 128, 255), 5)
+        cv2.line(res_plotted, (center[0], center[1] - size), (center[0], center[1] + size), (0, 128, 255), 5)
+        cv2.putText(res_plotted, str(fps), (7, 70), cv2.FONT_HERSHEY_SIMPLEX, 3, (100, 255, 0), 3, cv2.LINE_AA)
 
+        if enable_mjpeg and stream is not None:
             stream.set_frame(res_plotted)
+
+        # Send frame to main-thread display queue
+        if enable_display:
+            if out_q.full():
+                try:
+                    out_q.get_nowait()
+                except Empty:
+                    pass
+            try:
+                out_q.put_nowait(res_plotted)
+            except Full:
+                pass
 
     cam_thread.join()
     print(f"CAMERA {cameraname} EXITING (detector thread)")
@@ -169,10 +188,25 @@ else:
     stream = None
 
 threads: list[Thread] = []
+
+# On macOS, preflight camera permissions on the main thread so AVFoundation prompts can appear
+if platform.system() == "Darwin":
+    for c in cameras:
+        cap = cv2.VideoCapture(c)
+        # A brief read attempt can help trigger permission; ignore failures
+        try:
+            _ = cap.read()
+        except Exception:
+            pass
+        cap.release()
+
+# Per-camera queues for main-thread display
+display_queues: dict[int, Queue] = {c: Queue(maxsize=1) for c in cameras}
+
 for c in cameras:
     # Create the thread
     # daemon=True makes it shut down if something goes wrong
-    thread = Thread(target=run_tracker_in_thread, args=(c, stream), daemon=True)
+    thread = Thread(target=run_tracker_in_thread, args=(c, stream, display_queues[c]), daemon=True)
     # Add to the array to use later
     threads.append(thread)
     # Start the thread
@@ -182,8 +216,39 @@ snapshot_thread: Thread = Thread(target=snapshotter.run_snapshotter_thread, daem
 snapshot_thread.start()
 
 try:
-    while True:
-        time.sleep(1)
+    if enable_display:
+        # Create windows on main thread
+        for c in cameras:
+            window_name = f"Camera {c}"
+            cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+            cv2.resizeWindow(window_name, 960, 540)
+
+        while True:
+            # Show latest frames if available
+            for c in cameras:
+                window_name = f"Camera {c}"
+                try:
+                    frame = display_queues[c].get_nowait()
+                except Empty:
+                    frame = None
+                if frame is not None:
+                    cv2.imshow(window_name, frame)
+
+            # Handle key events
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q') or key == 27:
+                print("Quit requested from window")
+                is_interrupted = True
+                break
+
+            # Also break if all threads have exited
+            if all(not t.is_alive() for t in threads):
+                break
+
+            time.sleep(0.001)
+    else:
+        while True:
+            time.sleep(1)
 except (KeyboardInterrupt, SystemExit) as e:
     print(COLOR_BOLD, "INTERRUPT RECIEVED -- EXITING", COLOR_RESET, sep="")
     is_interrupted = True
@@ -195,3 +260,6 @@ for thread in threads:
 if (enable_mjpeg):
     # Clean up
     server.stop()
+    
+if enable_display:
+    cv2.destroyAllWindows()

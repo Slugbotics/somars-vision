@@ -22,20 +22,9 @@ import util
 # Model path
 MODEL_PATH = "models/mannequinmodel.pt"
 
-def detect_cameras(max_index: int = 10) -> list[int]:
-    found: list[int] = []
-    for i in range(max_index):
-        cap = cv2.VideoCapture(i)
-        if cap.isOpened():
-            ok, _ = cap.read()
-            if ok:
-                found.append(i)
-        cap.release()
-    return found if len(found) > 0 else [0]
-
-# Autodetect cameras by default
-cameras: list[int] = detect_cameras()
-
+# Define camera indexes to display in separate windows
+# Reverted to a fixed set to ensure all potential feeds create windows
+cameras: list[int] = [i for i in range(5)]
 
 # ANSI colors
 COLOR_BOLD = "\033[1m"

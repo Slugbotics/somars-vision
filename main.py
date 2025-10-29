@@ -14,6 +14,7 @@ import sys
 import platform
 import functools
 import subprocess
+import os
 from mjpeg_streamer import MjpegServer, Stream
 from queue import Empty, Queue, Full
 import util
@@ -21,10 +22,19 @@ import util
 # Model path
 MODEL_PATH = "models/mannequinmodel.pt"
 
-# Define the video files for the trackers
-# Path to video files, 0 for webcam, 1 for external camera
-# TODO: This should only be the cameras we need, not every possibility
-cameras: list[int] = [i for i in range(5)]
+def detect_cameras(max_index: int = 10) -> list[int]:
+    found: list[int] = []
+    for i in range(max_index):
+        cap = cv2.VideoCapture(i)
+        if cap.isOpened():
+            ok, _ = cap.read()
+            if ok:
+                found.append(i)
+        cap.release()
+    return found if len(found) > 0 else [0]
+
+# Autodetect cameras by default
+cameras: list[int] = detect_cameras()
 
 
 # ANSI colors
@@ -38,6 +48,12 @@ is_interactive: bool = sys.stderr.isatty()
 enable_mjpeg: bool = is_interactive
 # We support on-screen windows on all OSes by doing GUI work on the main thread.
 enable_display: bool = True  # show OpenCV windows while detecting
+
+# Opt-in: skip macOS AVFoundation auth prompt/loop handling
+# Set via env SOMARS_SKIP_MACOS_AUTH=1 to enable skipping
+SKIP_MACOS_AUTH: bool = bool(int(os.getenv("SOMARS_SKIP_MACOS_AUTH", "0")))
+if platform.system() == "Darwin" and SKIP_MACOS_AUTH:
+    os.environ["OPENCV_AVFOUNDATION_SKIP_AUTH"] = "1"
 
 is_interrupted: bool = False
 
@@ -190,7 +206,7 @@ else:
 threads: list[Thread] = []
 
 # On macOS, preflight camera permissions on the main thread so AVFoundation prompts can appear
-if platform.system() == "Darwin":
+if platform.system() == "Darwin" and not SKIP_MACOS_AUTH:
     for c in cameras:
         cap = cv2.VideoCapture(c)
         # A brief read attempt can help trigger permission; ignore failures

@@ -84,6 +84,7 @@ data/
 datasets/
 images/
 videos/
+output/
 *.mp4
 *.avi
 *.mkv

@@ -12,6 +12,7 @@ MAVLINK_TARGET_PORT = int(os.getenv("MAVLINK_TARGET_PORT", "14550"))
 
 # mavlink_connection: initialized lazily when first send is attempted
 _mavlink_conn: Optional[object] = None
+_mavlink_recv_conn: Optional[object] = None
 
 
 def ensure_mavlink() -> Optional[object]:
@@ -28,6 +29,23 @@ def ensure_mavlink() -> Optional[object]:
         _mavlink_conn = None
         return None
 
+def ensure_mavlink_recv(listen_port: int = 14551) -> Optional[object]:
+    """Lazily create and return a pymavlink connection suitable for receiving.
+
+    This uses a UDP server-style URI (udpin) that listens on all interfaces
+    on the given port. The sender should send to this host:port.
+    """
+    global _mavlink_recv_conn
+    if _mavlink_recv_conn is not None:
+        return _mavlink_recv_conn
+    try:
+        uri = f"udpin:0.0.0.0:{listen_port}"
+        _mavlink_recv_conn = mavutil.mavlink_connection(uri)
+        return _mavlink_recv_conn
+    except Exception as e:
+        print(f"Failed to open MAVLink receive connection on port {listen_port}: {e}")
+        _mavlink_recv_conn = None
+        return None
 
 def add_results(results: List[Results], start_time: float) -> None:
     """Select best detection for each class (0 and 1) and send scalar telemetry.
@@ -61,6 +79,7 @@ def add_results(results: List[Results], start_time: float) -> None:
     # Send telemetry for each class if we found a detection
     for info in best_info:
         if info is None:
+            send_telemetry_data(0, 0, cls_id, 0, False)
             continue
         boxes, idx, cls_id = info
         try:
@@ -72,18 +91,18 @@ def add_results(results: List[Results], start_time: float) -> None:
         y = util.get_y_offset_deg(box)
         latency = time.time() - start_time
 
-        send_telemetry_data(x, y, cls_id, latency)
+        send_telemetry_data(x, y, cls_id, latency, True)
 
 def name_bytes(s: str) -> bytes:
     b = s.encode("ascii", "ignore")[:10]
     return b + b"\0" * (10 - len(b))
 
-def send_telemetry_data(x: float, y: float, obj_cls: int, lat: float) -> None:
+def send_telemetry_data(x: float, y: float, obj_cls: int, lat: float, detected: bool) -> None:
     """Send x, y and latency as three separate MAVLink messages.
 
     Uses the standard `named_value_float` MAVLink message .
     Each field is sent in its own message with a short
-    name: 'vis_x', 'vis_y', 'vis_lat'.
+    name: 'vis_x', 'vis_y', 'vis_lat', 'vis_det'.
     """
     conn = ensure_mavlink()
     if conn is None:
@@ -97,6 +116,35 @@ def send_telemetry_data(x: float, y: float, obj_cls: int, lat: float) -> None:
         conn.mav.named_value_float_send(time_boot_ms, name_bytes(f"vis_x{obj_cls}"), float(x))
         conn.mav.named_value_float_send(time_boot_ms, name_bytes(f"vis_y{obj_cls}"), float(y))
         conn.mav.named_value_float_send(time_boot_ms, name_bytes(f"vis_lat{obj_cls}"), float(lat))
+        conn.mav.named_value_int_send(time_boot_ms, name_bytes(f"vis_det{obj_cls}"), int(detected))
     except Exception as e:
         print(f"Failed to send telemetry via named_value_float: {e}")
         return
+
+def get_signal():
+    """Get an input signal from the FCU as a string"""
+    conn = ensure_mavlink_recv()
+    if conn is None:
+        return ""
+
+    # Try to read a STATUSTEXT message (standard MAVLink textual message).
+    try:
+        msg = conn.recv_match(type="STATUSTEXT", blocking=True, timeout=1)
+        if msg is None:
+            return ""
+        # msg.text is typically a bytes/str field depending on pymavlink version
+        text = getattr(msg, "text", None)
+        if text is None:
+            # try other common field names
+            text = getattr(msg, "message", "")
+        # Ensure string
+        if isinstance(text, bytes):
+            try:
+                return text.decode("utf-8", "ignore")
+            except Exception:
+                return text.decode("ascii", "ignore")
+        return str(text)
+    except Exception as e:
+        # non-fatal: return empty string on errors
+        return ""
+    

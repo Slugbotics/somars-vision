@@ -18,6 +18,7 @@ import os
 from mjpeg_streamer import MjpegServer, Stream
 from queue import Empty, Queue, Full
 import util
+import mapping
 
 # Model path
 MODEL_PATH = "models/mannequinmodel.pt"
@@ -73,6 +74,10 @@ print("Program started")
 def run_cam_in_thread(cameraname: int, q: Queue) -> None:
     video: cv2.VideoCapture = cv2.VideoCapture(cameraname)  # Read the video file
 
+    store_q: Queue = Queue(maxsize=1)
+    store_thread = Thread(target=store_images_in_thread, args=(store_q), daemon=True)
+    store_thread.start()
+
     while True:
         ret: bool
         frame: np.ndarray
@@ -97,12 +102,40 @@ def run_cam_in_thread(cameraname: int, q: Queue) -> None:
             q.put_nowait((frame.copy(), start_time))
         except Full:
             pass
+    
+        # Empty the queue if it is full so the frame in it is the most recent one
+        if store_q.full():
+            # This should almost never happen, but it avoids any potential errors if it is emptied between calling full and get
+            try:
+                store_q.get_nowait()
+            except Empty:
+                pass
+        try:
+            store_q.put_nowait(frame.copy())
+        except Full:
+            pass
 
     print(f"CAMERA {cameraname} EXITING (camera thread)")
     # Release video sources
     video.release()
-        
 
+def store_images_in_thread(store_q: Queue) -> None:
+    i = 0
+    picture_taken = False
+    while not is_interrupted:
+        try:
+            frame = store_q.get(block=True, timeout=1)
+        except Empty:
+            continue
+        
+        signal = telemetry.get_signal()
+        if frame is not None and telemetry.get_signal() == "picture" and not picture_taken:
+            picture_taken = True
+            filename: str = f"images/img{i}.jpg"
+            cv2.imwrite(filename, frame)
+            i += 1
+        elif telemetry.get_signal() != "picture":
+            picture_taken = False
 
 def run_tracker_in_thread(cameraname: int, stream: Stream, out_q: Queue) -> None:
     """
@@ -132,7 +165,6 @@ def run_tracker_in_thread(cameraname: int, stream: Stream, out_q: Queue) -> None
     while not is_interrupted and cam_thread.is_alive():
         if (is_interactive):
             print(f"Camera: {cameraname}") # For debugging 
-
 
         try:
             start_time: float
@@ -219,6 +251,9 @@ for c in cameras:
 
 snapshot_thread: Thread = Thread(target=snapshotter.run_snapshotter_thread, daemon=True)
 snapshot_thread.start()
+
+mapping_init_thread: Thread = Thread(target=mapping.inititalize, daemon=True)
+mapping_init_thread.start()
 
 try:
     if enable_display:

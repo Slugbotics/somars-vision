@@ -1,21 +1,24 @@
 # Original version copied from FRC team 972's 2024-Coprocessor-Vision repository
 
 #! ./venv/bin/python3
+import functools
+import os
+import platform
+import signal
+import subprocess
+import sys
+import time
 from threading import Thread
+from queue import Empty, Full, Queue
+import shutil
+
 import cv2
 import numpy as np
-from ultralytics import YOLO # type: ignore
-from ultralytics.engine.results import Results # type: ignore
-import time
-import telemetry
-import signal
-import sys
-import platform
-import functools
-import subprocess
-import os
 from mjpeg_streamer import MjpegServer, Stream
-from queue import Empty, Queue, Full
+from ultralytics import YOLO  # type: ignore
+from ultralytics.engine.results import Results  # type: ignore
+
+import telemetry
 import util
 import mapping
 
@@ -66,6 +69,18 @@ signal.signal(signal.SIGTERM, handle_signal)
 
 # Load the model
 model = YOLO(MODEL_PATH)
+
+image_folder = os.path.abspath("images")
+output_folder = os.path.abspath("output")
+
+# Remove old dirs (if present) then recreate empty
+for p in (image_folder, output_folder):
+    if os.path.exists(p):
+        try:
+            shutil.rmtree(p)
+        except Exception as e:
+            print(f"Failed to remove {p}: {e}")
+    os.makedirs(p, exist_ok=True)
 
 print("Program started")
 
@@ -119,10 +134,9 @@ def run_cam_in_thread(cameraname: int, q: Queue) -> None:
     video.release()
 
 def store_images_in_thread(store_q: Queue) -> None:
+    """Store images when requested via telemetry."""
     i = 0
     picture_taken = False
-    image_folder = os.path.abspath("images")
-    os.makedirs(image_folder, exist_ok=True)
     while not is_interrupted:
         try:
             frame = store_q.get(block=True, timeout=1)

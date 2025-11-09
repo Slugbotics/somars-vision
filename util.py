@@ -1,4 +1,5 @@
 import math
+
 from ultralytics.engine.results import Boxes # type: ignore
 
 # TODO: Change these to the actual camera values

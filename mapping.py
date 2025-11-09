@@ -1,10 +1,11 @@
 import http.client
+import os
 import socket
 import subprocess
 import time
-import os
-from typing import Optional
 import threading
+from typing import Optional
+
 from pyodm import Node
 
 node: Node = None

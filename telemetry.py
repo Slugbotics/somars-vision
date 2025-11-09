@@ -2,9 +2,10 @@ import os
 import time
 from typing import Optional, List, Tuple
 
-import util
-from ultralytics.engine.results import Results  # type: ignore
 from pymavlink import mavutil
+from ultralytics.engine.results import Results  # type: ignore
+
+import util
 
 # Minimum confidence threshold for object detection
 MIN_CONFIDENCE = 0.5

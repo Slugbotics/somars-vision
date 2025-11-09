@@ -71,7 +71,7 @@ def ensure_nodeodm_container(name: str = "nodeodm", image: str = "opendronemap/n
 			return False
 
 	# Wait for HTTP endpoint
-	deadline = time.time() + 30.0
+	deadline = time.time() + 600.0
 	while time.time() < deadline:
 		try:
 			conn = http.client.HTTPConnection("localhost", port, timeout=2)

@@ -8,7 +8,6 @@ from ultralytics import YOLO # type: ignore
 from ultralytics.engine.results import Results # type: ignore
 import time
 import telemetry
-import snapshotter
 import signal
 import sys
 import platform
@@ -45,6 +44,7 @@ SKIP_MACOS_AUTH: bool = bool(int(os.getenv("SOMARS_SKIP_MACOS_AUTH", "0")))
 if platform.system() == "Darwin" and SKIP_MACOS_AUTH:
     os.environ["OPENCV_AVFOUNDATION_SKIP_AUTH"] = "1"
 
+# exit gracefully on ^C
 is_interrupted: bool = False
 
 @functools.cache # only run once
@@ -67,15 +67,13 @@ signal.signal(signal.SIGTERM, handle_signal)
 # Load the model
 model = YOLO(MODEL_PATH)
 
-# exit gracefully on ^C
-is_interrupted: bool = False
 print("Program started")
 
 def run_cam_in_thread(cameraname: int, q: Queue) -> None:
     video: cv2.VideoCapture = cv2.VideoCapture(cameraname)  # Read the video file
 
     store_q: Queue = Queue(maxsize=1)
-    store_thread = Thread(target=store_images_in_thread, args=(store_q), daemon=True)
+    store_thread = Thread(target=store_images_in_thread, args=[store_q], daemon=False)
     store_thread.start()
 
     while True:
@@ -115,6 +113,7 @@ def run_cam_in_thread(cameraname: int, q: Queue) -> None:
         except Full:
             pass
 
+    store_thread.join()
     print(f"CAMERA {cameraname} EXITING (camera thread)")
     # Release video sources
     video.release()
@@ -122,6 +121,8 @@ def run_cam_in_thread(cameraname: int, q: Queue) -> None:
 def store_images_in_thread(store_q: Queue) -> None:
     i = 0
     picture_taken = False
+    image_folder = os.path.abspath("images")
+    os.makedirs(image_folder, exist_ok=True)
     while not is_interrupted:
         try:
             frame = store_q.get(block=True, timeout=1)
@@ -129,12 +130,16 @@ def store_images_in_thread(store_q: Queue) -> None:
             continue
         
         signal = telemetry.get_signal()
-        if frame is not None and telemetry.get_signal() == "picture" and not picture_taken:
+        if frame is not None and signal == "picture" and not picture_taken:
             picture_taken = True
-            filename: str = f"images/img{i}.jpg"
+            filename: str = os.path.join(image_folder, f"img{i}.jpg")
             cv2.imwrite(filename, frame)
             i += 1
-        elif telemetry.get_signal() != "picture":
+        elif signal == "generate":
+            mapping.generate_map()
+            # Once the map is generated, we don't need any more pictures, so this thread can exit
+            break
+        elif signal != "picture":
             picture_taken = False
 
 def run_tracker_in_thread(cameraname: int, stream: Stream, out_q: Queue) -> None:
@@ -155,8 +160,6 @@ def run_tracker_in_thread(cameraname: int, stream: Stream, out_q: Queue) -> None
     cam_thread = Thread(target=run_cam_in_thread, args=(cameraname, q), daemon=False)
     cam_thread.start()
 
-    snapshot_time: float = time.time()
-    
     global is_interrupted
 
     print(f"Camera {cameraname} activating")
@@ -183,10 +186,6 @@ def run_tracker_in_thread(cameraname: int, stream: Stream, out_q: Queue) -> None
         if results[0] is not None and len(results[0].boxes) != 0 and len(results[0].boxes[0]) is not None:
             print("x: " + str(util.get_x_offset_deg(results[0].boxes)))
             print("y: " + str(util.get_y_offset_deg(results[0].boxes)))
-
-        if (time.time() - snapshot_time > 10): # snapshot every x seconds
-            snapshotter.submit(results[0])
-            snapshot_time = time.time()
 
         # Overlay HUD and stream via MJPEG
         elapsed = end_time - start_time
@@ -249,10 +248,7 @@ for c in cameras:
     # Start the thread
     thread.start()
 
-snapshot_thread: Thread = Thread(target=snapshotter.run_snapshotter_thread, daemon=True)
-snapshot_thread.start()
-
-mapping_init_thread: Thread = Thread(target=mapping.inititalize, daemon=True)
+mapping_init_thread: Thread = Thread(target=mapping.initialize, daemon=True)
 mapping_init_thread.start()
 
 try:

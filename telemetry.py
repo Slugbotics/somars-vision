@@ -6,6 +6,9 @@ import util
 from ultralytics.engine.results import Results  # type: ignore
 from pymavlink import mavutil
 
+# Minimum confidence threshold for object detection
+MIN_CONFIDENCE = 0.5
+
 # MAVLink target (UDP out). Default commonly used port is 14550.
 MAVLINK_TARGET_HOST = os.getenv("MAVLINK_TARGET_HOST", "127.0.0.1")
 MAVLINK_TARGET_PORT = int(os.getenv("MAVLINK_TARGET_PORT", "14550"))
@@ -55,7 +58,7 @@ def add_results(results: List[Results], start_time: float) -> None:
     offsets and latency then call send_telemetry_data(x, y, class_id, lat).
     """
     NUM_CLASSES = 2
-    best_conf: List[float] = [-1.0] * NUM_CLASSES
+    best_conf: List[float] = [MIN_CONFIDENCE] * NUM_CLASSES
     best_info: List[Optional[Tuple[object, int, int]]] = [None] * NUM_CLASSES
 
     for result in results:
@@ -77,9 +80,10 @@ def add_results(results: List[Results], start_time: float) -> None:
                 best_info[cls_id] = (boxes, int(i), cls_id)
 
     # Send telemetry for each class if we found a detection
-    for info in best_info:
+    for i in range(len(best_info)):
+        info = best_info[i]
         if info is None:
-            send_telemetry_data(0, 0, cls_id, 0, False)
+            send_telemetry_data(0, 0, i, 0, False)
             continue
         boxes, idx, cls_id = info
         try:
@@ -121,22 +125,15 @@ def send_telemetry_data(x: float, y: float, obj_cls: int, lat: float, detected: 
         print(f"Failed to send telemetry via named_value_float: {e}")
         return
 
-def get_signal():
-    """Get an input signal from the FCU as a string"""
-    conn = ensure_mavlink_recv()
-    if conn is None:
-        return ""
-
-    # Try to read a STATUSTEXT message (standard MAVLink textual message).
+def get_message_text(mg):
     try:
-        msg = conn.recv_match(type="STATUSTEXT", blocking=True, timeout=1)
-        if msg is None:
+        if mg is None:
             return ""
-        # msg.text is typically a bytes/str field depending on pymavlink version
-        text = getattr(msg, "text", None)
+        # newest.text is typically a bytes/str field depending on pymavlink version
+        text = getattr(mg, "text", None)
         if text is None:
             # try other common field names
-            text = getattr(msg, "message", "")
+            text = getattr(mg, "message", "")
         # Ensure string
         if isinstance(text, bytes):
             try:
@@ -145,6 +142,28 @@ def get_signal():
                 return text.decode("ascii", "ignore")
         return str(text)
     except Exception as e:
-        # non-fatal: return empty string on errors
+        print(f"Failed to extract message text: {e}")
         return ""
-    
+
+def get_signal():
+    """Get an input signal from the FCU as a string"""
+    conn = ensure_mavlink_recv()
+    if conn is None:
+        return ""
+
+    # Try to read a STATUSTEXT message (standard MAVLink textual message).
+    try:
+        newest = ""
+        while True:
+            msg = conn.recv_match(type="STATUSTEXT", blocking=False)
+            if msg is None:
+                break
+            text = get_message_text(msg).strip().lower()
+            # Do not update newest if it is already "generate" and only replace "picture" with "generate"
+            # This finds the most important message and ensures we don't miss one of these
+            if newest != "generate" and (text == "generate" or newest != "picture"):
+                newest = text
+    except Exception as e:
+        print(f"Failed to read telemetry: {e}")
+        return ""
+    return newest

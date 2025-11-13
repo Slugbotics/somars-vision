@@ -1,4 +1,5 @@
-# Original version copied from FRC team 972's 2024-Coprocessor-Vision repository
+# Identical to main.py except it takes pictures every second instead of using telemetry
+NUM_IMAGES = 50
 
 #! ./venv/bin/python3
 import functools
@@ -18,7 +19,6 @@ from mjpeg_streamer import MjpegServer, Stream
 from ultralytics import YOLO  # type: ignore
 from ultralytics.engine.results import Results  # type: ignore
 
-import telemetry
 import util
 import mapping
 
@@ -134,16 +134,24 @@ def run_cam_in_thread(cameraname: int, q: Queue) -> None:
     video.release()
 
 def store_images_in_thread(store_q: Queue) -> None:
-    """Store images when requested via telemetry."""
+    """Store images every second."""
     i = 0
     picture_taken = False
+    next_picture_time = time.time() + 10.0
     while not is_interrupted:
         try:
             frame = store_q.get(block=True, timeout=1)
         except Empty:
             continue
         
-        signal = telemetry.get_signal()
+        signal = "none"
+        if i >= NUM_IMAGES:
+            signal = "generate"
+            print("Generating map")
+        elif time.time() >= next_picture_time:
+            signal = "picture"
+            next_picture_time += 1.0
+            print(f"Taking picture {i}")
         if frame is not None and signal == "picture" and not picture_taken:
             picture_taken = True
             filename: str = os.path.join(image_folder, f"img{i}.jpg")
@@ -193,8 +201,6 @@ def run_tracker_in_thread(cameraname: int, stream: Stream, out_q: Queue) -> None
         # Track objects in frames if available
         results: list[Results] = model.track(frame, persist=True, verbose=is_interactive)
         res_plotted: np.ndarray = results[0].plot()
-        # Calculate offsets
-        telemetry.add_results(results, start_time)
         end_time: float = time.time()
 
         if results[0] is not None and len(results[0].boxes) != 0 and len(results[0].boxes[0]) is not None:

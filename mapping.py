@@ -135,7 +135,15 @@ def generate_map():
 
         try:
             # Create and run the processing task
-            task = node.create_task(image_paths)
+            options = {
+                "fast-orthophoto": True,
+                # Stop the pipeline at the orthophoto step
+                "end-with": "odm_orthophoto",
+                # Avoid extra artifacts/reports/3D models
+                "skip-report": True,
+                "skip-3dmodel": True,
+			}
+            task = node.create_task(image_paths, options)
             print("Task created, waiting for completion...")
             task.wait_for_completion()
             print("Task completed. Downloading results...")

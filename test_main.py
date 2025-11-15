@@ -79,10 +79,8 @@ for p in (image_folder, output_folder):
         try:
             shutil.rmtree(p)
         except Exception as e:
-            print(f"Failed to remove {p}: {e}")
+            pass
     os.makedirs(p, exist_ok=True)
-
-print("Program started")
 
 def run_cam_in_thread(cameraname: int, q: Queue) -> None:
     video: cv2.VideoCapture = cv2.VideoCapture(cameraname)  # Read the video file
@@ -129,7 +127,6 @@ def run_cam_in_thread(cameraname: int, q: Queue) -> None:
             pass
 
     store_thread.join()
-    print(f"CAMERA {cameraname} EXITING (camera thread)")
     # Release video sources
     video.release()
 
@@ -184,13 +181,9 @@ def run_tracker_in_thread(cameraname: int, stream: Stream, out_q: Queue) -> None
 
     global is_interrupted
 
-    print(f"Camera {cameraname} activating")
 
     # Exit the loop if no more frames in the video
     while not is_interrupted and cam_thread.is_alive():
-        if (is_interactive):
-            print(f"Camera: {cameraname}") # For debugging 
-
         try:
             start_time: float
             frame: np.ndarray
@@ -202,10 +195,6 @@ def run_tracker_in_thread(cameraname: int, stream: Stream, out_q: Queue) -> None
         results: list[Results] = model.track(frame, persist=True, verbose=is_interactive)
         res_plotted: np.ndarray = results[0].plot()
         end_time: float = time.time()
-
-        if results[0] is not None and len(results[0].boxes) != 0 and len(results[0].boxes[0]) is not None:
-            print("x: " + str(util.get_x_offset_deg(results[0].boxes)))
-            print("y: " + str(util.get_y_offset_deg(results[0].boxes)))
 
         # Overlay HUD and stream via MJPEG
         elapsed = end_time - start_time
@@ -232,7 +221,6 @@ def run_tracker_in_thread(cameraname: int, stream: Stream, out_q: Queue) -> None
                 pass
 
     cam_thread.join()
-    print(f"CAMERA {cameraname} EXITING (detector thread)")
 
 
 if (enable_mjpeg):
@@ -293,8 +281,8 @@ try:
             # Handle key events
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q') or key == 27:
-                print("Quit requested from window")
                 is_interrupted = True
+                mapping.stop_event.set()
                 break
 
             # Also break if all threads have exited
@@ -306,8 +294,8 @@ try:
         while True:
             time.sleep(1)
 except (KeyboardInterrupt, SystemExit) as e:
-    print(COLOR_BOLD, "INTERRUPT RECIEVED -- EXITING", COLOR_RESET, sep="")
     is_interrupted = True
+    mapping.stop_event.set()
 
 # Wait for the tracker threads to finish
 for thread in threads:

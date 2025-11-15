@@ -3,14 +3,19 @@ import os
 import socket
 import subprocess
 import time
+import shutil
+import getpass
 import threading
 from typing import Optional
 
 from pyodm import Node
 
+FILE_NAME = "UCSC_SOMARS_map.png"
+
 node: Node = None
 initialized: bool = False
 lock: threading.Lock = threading.Lock()
+stop_event: threading.Event = threading.Event()
 
 def _run_cmd(cmd: list[str]) -> tuple[int, str, str]:
     """Run a command and return (returncode, stdout, stderr)."""
@@ -110,6 +115,94 @@ def initialize():
             print(f"Failed to create Node: {e}")
     print("Connected to NodeODM at localhost:3000")
 
+
+def _is_mount(path: str) -> bool:
+    """Return True if the given path is a mount point."""
+    try:
+        return os.path.ismount(path)
+    except Exception:
+        return False
+
+
+def _find_usb_mount() -> Optional[str]:
+    """Try to locate a mounted USB drive and return its mount path or None."""
+    # POSIX detection
+    user = None
+    try:
+        user = getpass.getuser()
+    except Exception:
+        user = None
+
+    candidates = []
+    if user:
+        candidates.extend([f"/run/media/{user}", f"/media/{user}"])
+    candidates.extend(["/media", "/run/media", "/mnt"])
+
+    for base in candidates:
+        if os.path.isdir(base):
+            # return the first non-empty subdirectory
+            try:
+                for sub in os.listdir(base):
+                    path = os.path.join(base, sub)
+                    if os.path.isdir(path) and _is_mount(path):
+                        return path
+            except Exception:
+                continue
+
+    # Fallback: parse /proc/mounts for typical removable devices
+    try:
+        if os.path.exists("/proc/mounts"):
+            with open("/proc/mounts", "r", encoding="utf-8") as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        mount_point = parts[1]
+                        fs = parts[2] if len(parts) > 2 else ""
+                        if mount_point.startswith("/media") or mount_point.startswith("/run/media") or mount_point.startswith("/mnt"):
+                            # heuristics: prefer vfat, exfat, ntfs, or device-based mounts
+                            if fs.lower() in ("vfat", "exfat", "ntfs", "fuseblk") or parts[0].startswith("/dev/"):
+                                if os.path.isdir(mount_point):
+                                    return mount_point
+    except Exception:
+        pass
+
+    return None
+
+
+def copy_output_to_usb(output_folder: str) -> bool:
+    """Copy the contents of `output_folder` to a detected USB mount.
+
+    Returns True on success, False if no USB found or copy failed.
+    """
+    mount = _find_usb_mount()
+    if not mount:
+        return False
+
+    # Ensure mount is writable
+    if not os.access(mount, os.W_OK):
+        return False
+
+    src = os.path.join(output_folder, FILE_NAME)
+    if not os.path.exists(src):
+        return False
+
+    dst = os.path.join(mount, FILE_NAME)
+    # If destination exists, remove it to allow overwrite
+    if os.path.exists(dst):
+        try:
+            if os.path.islink(dst) or os.path.isfile(dst):
+                os.remove(dst)
+            else:
+                shutil.rmtree(dst)
+        except Exception as e:
+            return False
+
+    try:
+        shutil.copy2(src, dst)
+        return True
+    except Exception as e:
+        return False
+
 def generate_map():
     """Generates the map using images in the folder images and saves output to output folder."""
     global node, initialized
@@ -146,13 +239,13 @@ def generate_map():
                 "end-with": "odm_orthophoto",
                 "skip-report": True,
                 "skip-3dmodel": True,
+                "orthophoto-png": True,
                 # Tune this to change map quality. Low values = higher quality, 5 is the default
                 "orthophoto-resolution": 5
             }
+            # Only request the PNG orthophoto to minimize downloads
             outputs = [
-                "odm_orthophoto/odm_orthophoto.tif",
                 "odm_orthophoto/odm_orthophoto.png",
-                "odm_orthophoto/odm_orthophoto.kml"
             ]
             task = node.create_task(image_paths, options=options, outputs=outputs, name=f"Mapping-{int(time.time())}")
             print("Task created, waiting for completion...")
@@ -160,6 +253,31 @@ def generate_map():
             print("Task completed. Downloading results...")
             task.download_assets(output_folder)
             print("Results downloaded")
+            
+            # Copy the produced PNG into the top-level output folder using the desired name
+            try:
+                ortho_dir = os.path.join(output_folder, "odm_orthophoto")
+                if os.path.isdir(ortho_dir):
+                    src_png = os.path.join(ortho_dir, "odm_orthophoto.png")
+                    if os.path.exists(src_png):
+                        dst_png = os.path.join(output_folder, FILE_NAME)
+                        try:
+                            shutil.copy2(src_png, dst_png)
+                            print(f"Saved orthophoto as {dst_png}")
+                        except Exception as e:
+                            print(f"Failed to save orthophoto {src_png} -> {dst_png}: {e}")
+            except Exception as e:
+                print(f"Orthophoto rename step failed: {e}")
+
+            # Copy map to USB drive (wait until a USB is mounted)
+            while not copy_output_to_usb(output_folder):
+                # If main thread signalled stop, abort waiting
+                if stop_event.is_set():
+                    return
+                print("Waiting for USB drive to be mounted... (press Ctrl-C to abort)")
+                time.sleep(2)
+            print("Output copied to USB drive.")
+
         except Exception as e:
             print(f"Failed to create or process ODM task: {e}")
 

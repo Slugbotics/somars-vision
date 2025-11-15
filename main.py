@@ -289,6 +289,7 @@ try:
             if key == ord('q') or key == 27:
                 print("Quit requested from window")
                 is_interrupted = True
+                mapping.stop_event.set()
                 break
 
             # Also break if all threads have exited
@@ -302,6 +303,7 @@ try:
 except (KeyboardInterrupt, SystemExit) as e:
     print(COLOR_BOLD, "INTERRUPT RECIEVED -- EXITING", COLOR_RESET, sep="")
     is_interrupted = True
+    mapping.stop_event.set()
 
 # Wait for the tracker threads to finish
 for thread in threads:

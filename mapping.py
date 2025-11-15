@@ -240,12 +240,14 @@ def generate_map():
                 "skip-report": True,
                 "skip-3dmodel": True,
                 "orthophoto-png": True,
+                "orthophoto-format": "png",
                 # Tune this to change map quality. Low values = higher quality, 5 is the default
                 "orthophoto-resolution": 5
             }
-            # Only request the PNG orthophoto to minimize downloads
+            # Request both PNG and TIFF orthophoto so we have a fallback
             outputs = [
                 "odm_orthophoto/odm_orthophoto.png",
+                "odm_orthophoto/odm_orthophoto.tif"
             ]
             task = node.create_task(image_paths, options=options, outputs=outputs, name=f"Mapping-{int(time.time())}")
             print("Task created, waiting for completion...")

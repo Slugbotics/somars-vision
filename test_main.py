@@ -102,6 +102,9 @@ def run_cam_in_thread(cameraname: int, q: Queue) -> None:
         if is_interrupted:
             break
 
+        if frame is None:
+            continue
+
         # Empty the queue if it is full so the frame in it is the most recent one
         if q.full():
             # This should almost never happen, but it avoids any potential errors if it is emptied between calling full and get
@@ -126,6 +129,16 @@ def run_cam_in_thread(cameraname: int, q: Queue) -> None:
         except Full:
             pass
 
+    if store_q.full():
+        # This should almost never happen, but it avoids any potential errors if it is emptied between calling full and get
+        try:
+            store_q.get_nowait()
+        except Empty:
+            pass
+    try:
+        store_q.put_nowait(None)
+    except Exception:
+        pass
     store_thread.join()
     # Release video sources
     video.release()
@@ -140,7 +153,8 @@ def store_images_in_thread(store_q: Queue) -> None:
             frame = store_q.get(block=True, timeout=1)
         except Empty:
             continue
-        
+        if frame is None:
+            break
         signal = "none"
         if i >= NUM_IMAGES:
             signal = "generate"
@@ -271,6 +285,9 @@ try:
             # Show latest frames if available
             for c in cameras:
                 window_name = f"Camera {c}"
+                if not threads[cameras.index(c)].is_alive():
+                    cv2.destroyWindow(window_name)
+                    continue
                 try:
                     frame = display_queues[c].get_nowait()
                 except Empty:

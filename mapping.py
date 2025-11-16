@@ -247,7 +247,7 @@ def generate_map():
                 "skip-report": True,
                 "skip-3dmodel": True,
                 # Tune this to change map quality. Low values = higher quality, 5 is the default
-                "orthophoto-resolution": 5
+                "orthophoto-resolution": 1
             }
             # Only download the orthophoto output
             outputs = [

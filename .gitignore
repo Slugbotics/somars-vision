@@ -1,0 +1,159 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Byte-compiled / optimized / DLL files
+*.pyc
+*.pyo
+*.pyd
+
+# Distribution / packaging
+build/
+dist/
+eggs/
+.eggs/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+share/python-wheels/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*,cover
+
+# virtual environments
+# Common venv names
+venv/
+ENV/
+env/
+.venv/
+venv-*/
+env-*/
+
+# PyCharm
+.idea/
+.idea/*
+*.iml
+
+# VS Code
+.vscode/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and databases
+*.log
+*.sql
+*.sqlite
+
+# Secrets
+.env
+.env.*
+secrets.json
+
+# Model weights / large binaries (YOLO models, etc.)
+# Keep model files out of git — place them in models/ and track elsewhere if needed
+models/
+*.pt
+*.pth
+*.onnx
+*.tflite
+*.pb
+*.weights
+
+# Datasets / recordings / captures
+data/
+datasets/
+images/
+videos/
+output/
+*.mp4
+*.avi
+*.mkv
+
+# Stream / mjpeg cache
+mjpeg_cache/
+
+# Snapshotter / outputs
+snapshots/
+outputs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Build artifacts
+*.so
+*.dylib
+*.dll
+
+# Python profiler
+profiler/
+
+# C extensions
+*.c
+*.cpp
+
+# Coverage & profiling
+.coverage
+coverage/
+
+# mypy
+.mypy_cache/
+dmypy.json
+dmypy.socket
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Editor swap files
+*.swp
+*.swo
+
+# Node/npm (if any front-end tooling is added)
+node_modules/
+package-lock.json
+yarn.lock
+
+# System-specific
+Thumbs.db
+.Spotlight-V100
+.fseventsd
+
+# Ignore dataset and model zips and tarballs
+*.zip
+*.tar.gz
+*.tgz
+
+# Logs produced by this project
+logs/
+
+# CI artifacts
+.pytest_cache/
+.github/workflows/*
+
+# Optional: keep lightweight model pointer files in repo, but not the heavy weights
+# Example: models/model-stub.txt
+# If you prefer to keep small metadata or pointer files, create an allowlist
+# e.g. !models/*.txt
+

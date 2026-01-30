@@ -27,7 +27,7 @@ MODEL_PATH = "models/mannequinmodel.pt"
 
 # Define camera indexes to display in separate windows
 # Reverted to a fixed set to ensure all potential feeds create windows
-cameras: list[int] = [i for i in range(5)]
+cameras = [i for i in range(5)]
 
 # ANSI colors
 COLOR_BOLD = "\033[1m"
@@ -82,7 +82,7 @@ for p in (image_folder, output_folder):
             pass
     os.makedirs(p, exist_ok=True)
 
-def run_cam_in_thread(cameraname: int, q: Queue) -> None:
+def run_cam_in_thread(cameraname, q: Queue) -> None:
     video: cv2.VideoCapture = cv2.VideoCapture(cameraname)  # Read the video file
 
     store_q: Queue = Queue(maxsize=1)
@@ -90,6 +90,8 @@ def run_cam_in_thread(cameraname: int, q: Queue) -> None:
     store_thread.start()
 
     while True:
+        if type(cameraname) == str:
+            time.sleep(1/30)
         ret: bool
         frame: np.ndarray
         ret, frame = video.read()  # Read the video frames
@@ -175,7 +177,7 @@ def store_images_in_thread(store_q: Queue) -> None:
         elif signal != "picture":
             picture_taken = False
 
-def run_tracker_in_thread(cameraname: int, stream: Stream, out_q: Queue) -> None:
+def run_tracker_in_thread(cameraname, stream: Stream, out_q: Queue) -> None:
     """
     Runs a video file or webcam stream concurrently with the YOLOv8 model using threading.
 

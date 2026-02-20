@@ -1,0 +1,1 @@
+/home/kyle/somars-vision/build/messages/rosidl_cmake/rosidl_cmake-extras.cmake

@@ -19,8 +19,8 @@ from mjpeg_streamer import MjpegServer, Stream
 from ultralytics import YOLO  # type: ignore
 from ultralytics.engine.results import Results  # type: ignore
 
-import util
-import mapping
+from somars import util
+from somars import mapping
 
 # Model path
 MODEL_PATH = "models/mannequinmodel.pt"

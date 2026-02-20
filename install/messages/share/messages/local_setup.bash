@@ -1,0 +1,1 @@
+/home/kyle/somars-vision/build/messages/ament_cmake_environment_hooks/local_setup.bash

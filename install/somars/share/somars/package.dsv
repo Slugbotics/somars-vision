@@ -1,0 +1,6 @@
+source;share/somars/hook/pythonpath.ps1
+source;share/somars/hook/pythonpath.dsv
+source;share/somars/hook/pythonpath.sh
+source;share/somars/hook/ament_prefix_path.ps1
+source;share/somars/hook/ament_prefix_path.dsv
+source;share/somars/hook/ament_prefix_path.sh
